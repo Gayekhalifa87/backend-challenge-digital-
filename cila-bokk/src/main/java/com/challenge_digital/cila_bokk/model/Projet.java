@@ -48,9 +48,14 @@ public class Projet {
     @Column(columnDefinition = "TEXT")
     private String acteurs;
 
+
     @Enumerated(EnumType.STRING)
-    @Column(nullable = true)  // ✅ Nullable car le statut n'est défini qu'après soumission
-    private StatutProjet statut;
+    @Column(nullable = false)
+    private StatutProjet statut = StatutProjet.EN_ATTENTE_MANAGER;
+
+    @Column(nullable = false)
+    private Boolean soumis = true;
+
 
     @Column(nullable = false)
     private LocalDateTime dateSoumission;
@@ -69,8 +74,7 @@ public class Projet {
     /**
      * Indique si le projet a été soumis ou s'il est encore en cours de rédaction
      */
-    @Column(nullable = false)
-    private Boolean soumis = false;
+
 
     @OneToMany(mappedBy = "projet", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @JsonManagedReference

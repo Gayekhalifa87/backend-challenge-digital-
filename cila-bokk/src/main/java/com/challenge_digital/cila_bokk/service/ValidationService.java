@@ -34,6 +34,9 @@ public class ValidationService {
         Projet projet = projetRepository.findById(projetId)
                 .orElseThrow(() -> new RuntimeException("Projet non trouvé"));
 
+        // ✅ VÉRIFICATION STRICTE DU STATUT AVANT VALIDATION
+        validateProjectStatusForLevel(projet, niveau);
+
         Validation validation = validationRepository.findByProjetIdAndNiveau(projetId, niveau)
                 .orElseThrow(() -> new RuntimeException("Validation non trouvée pour ce niveau"));
 
@@ -47,7 +50,7 @@ public class ValidationService {
 
         Validation savedValidation = validationRepository.save(validation);
 
-        // ✅ Adapter les statuts selon votre nouveau workflow
+        // Mise à jour du statut du projet
         switch (niveau) {
             case NIVEAU_1:  // Manager validé → passe à DTO/DPD
                 projet.setStatut(StatutProjet.EN_ATTENTE_DTO_DPD);
@@ -71,24 +74,7 @@ public class ValidationService {
         projetRepository.save(projet);
 
         // Email de notification
-        String agentEmail = agentService.getAgentEmail(projet.getIdAgentSoumission());
-        String agentNom = agentService.getAgentFullName(projet.getIdAgentSoumission());
-        String validateurNom = agentService.getAgentFullName(idAgentValidateur);
-
-        if (agentEmail != null) {
-            String niveauLabel = getNiveauLabel(niveau);
-            String subject = "Validation de votre projet : " + projet.getTitre();
-            String body = String.format(
-                    "Bonjour %s,\n\n" +
-                            "Votre projet '%s' a été validé par %s (%s).\n\n" +
-                            "Commentaire : %s\n\n" +
-                            "Statut actuel : %s\n\n" +
-                            "Cordialement",
-                    agentNom, projet.getTitre(), validateurNom, niveauLabel,
-                    commentaire != null ? commentaire : "Aucun", projet.getStatut()
-            );
-            emailService.sendSimpleEmail(agentEmail, subject, body);
-        }
+        sendValidationEmail(projet, niveau, idAgentValidateur, commentaire, false);
 
         return convertToDTO(savedValidation);
     }
@@ -97,6 +83,9 @@ public class ValidationService {
     public ValidationDTO rejeterProjet(Long projetId, NiveauValidation niveau, Long idAgentValidateur, String commentaire) {
         Projet projet = projetRepository.findById(projetId)
                 .orElseThrow(() -> new RuntimeException("Projet non trouvé"));
+
+        // ✅ VÉRIFICATION STRICTE DU STATUT AVANT REJET
+        validateProjectStatusForLevel(projet, niveau);
 
         Validation validation = validationRepository.findByProjetIdAndNiveau(projetId, niveau)
                 .orElseThrow(() -> new RuntimeException("Validation non trouvée pour ce niveau"));
@@ -115,14 +104,60 @@ public class ValidationService {
         projetRepository.save(projet);
 
         // Email de notification
+        sendValidationEmail(projet, niveau, idAgentValidateur, commentaire, true);
+
+        return convertToDTO(savedValidation);
+    }
+
+    /**
+     * ✅ VALIDATION STRICTE : Vérifie que le projet a le bon statut pour le niveau de validation
+     */
+    private void validateProjectStatusForLevel(Projet projet, NiveauValidation niveau) {
+        switch (niveau) {
+            case NIVEAU_1:
+                if (projet.getStatut() != StatutProjet.EN_ATTENTE_MANAGER) {
+                    throw new IllegalStateException(
+                            "Ce projet ne peut pas être validé au niveau 1. " +
+                                    "Statut actuel: " + projet.getStatut() + ", statut attendu: EN_ATTENTE_MANAGER"
+                    );
+                }
+                break;
+            case NIVEAU_2:
+                if (projet.getStatut() != StatutProjet.EN_ATTENTE_DTO_DPD) {
+                    throw new IllegalStateException(
+                            "Ce projet ne peut pas être validé au niveau 2. " +
+                                    "Statut actuel: " + projet.getStatut() + ", statut attendu: EN_ATTENTE_DTO_DPD"
+                    );
+                }
+                break;
+            case NIVEAU_3:
+                if (projet.getStatut() != StatutProjet.EN_ATTENTE_COMITE) {
+                    throw new IllegalStateException(
+                            "Ce projet ne peut pas être validé au niveau 3. " +
+                                    "Statut actuel: " + projet.getStatut() + ", statut attendu: EN_ATTENTE_COMITE"
+                    );
+                }
+                break;
+        }
+    }
+
+    /**
+     * Envoie un email de notification après validation/rejet
+     */
+    private void sendValidationEmail(Projet projet, NiveauValidation niveau, Long idAgentValidateur,
+                                     String commentaire, boolean estRejet) {
         String agentEmail = agentService.getAgentEmail(projet.getIdAgentSoumission());
         String agentNom = agentService.getAgentFullName(projet.getIdAgentSoumission());
         String validateurNom = agentService.getAgentFullName(idAgentValidateur);
 
         if (agentEmail != null) {
             String niveauLabel = getNiveauLabel(niveau);
-            String subject = "Rejet de votre projet : " + projet.getTitre();
-            String body = String.format(
+            String subject = estRejet
+                    ? "Rejet de votre projet : " + projet.getTitre()
+                    : "Validation de votre projet : " + projet.getTitre();
+
+            String body = estRejet
+                    ? String.format(
                     "Bonjour %s,\n\n" +
                             "Votre projet '%s' a été rejeté par %s (%s).\n\n" +
                             "Motif : %s\n\n" +
@@ -130,11 +165,19 @@ public class ValidationService {
                             "Cordialement",
                     agentNom, projet.getTitre(), validateurNom, niveauLabel,
                     commentaire != null ? commentaire : "Non spécifié"
+            )
+                    : String.format(
+                    "Bonjour %s,\n\n" +
+                            "Votre projet '%s' a été validé par %s (%s).\n\n" +
+                            "Commentaire : %s\n\n" +
+                            "Statut actuel : %s\n\n" +
+                            "Cordialement",
+                    agentNom, projet.getTitre(), validateurNom, niveauLabel,
+                    commentaire != null ? commentaire : "Aucun", projet.getStatut()
             );
+
             emailService.sendSimpleEmail(agentEmail, subject, body);
         }
-
-        return convertToDTO(savedValidation);
     }
 
     public List<ValidationDTO> getHistoriqueValidations(Long projetId) {
@@ -170,9 +213,6 @@ public class ValidationService {
         return dto;
     }
 
-    /**
-     * ✅ Helper pour obtenir le label du niveau de validation
-     */
     private String getNiveauLabel(NiveauValidation niveau) {
         switch (niveau) {
             case NIVEAU_1: return "Manager";
