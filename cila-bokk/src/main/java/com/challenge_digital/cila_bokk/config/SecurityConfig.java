@@ -22,7 +22,6 @@ import java.util.List;
 
 /**
  * Configuration de sécurité avec Keycloak OAuth2
- * Protège les endpoints sensibles et configure CORS
  */
 @Configuration
 @EnableWebSecurity
@@ -38,20 +37,21 @@ public class SecurityConfig {
                         // ✅ Endpoints publics
                         .requestMatchers("/", "/accueil", "/login", "/static/**", "/assets/**").permitAll()
 
+                        // ✅ Endpoints d'authentification (publics)
+                        .requestMatchers("/api/auth/login", "/api/auth/refresh", "/api/auth/logout").permitAll()
+
                         // ✅ API publique : consultation des projets
                         .requestMatchers(HttpMethod.GET, "/api/projets").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/projets/count").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/projets/{id}").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/projets/agent/{agentId}").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/projets/statut/{statut}").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/projets/agent/{agentId}/brouillons").permitAll()
 
                         // ✅ API publique : consultation des validations
                         .requestMatchers(HttpMethod.GET, "/api/validations/**").permitAll()
 
-                        // ✅ Login public
-                        .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
-
-                        // ✅ Endpoints protégés (création/modification/suppression)
+                        // ✅ Endpoints protégés (nécessitent authentification)
                         .requestMatchers(HttpMethod.POST, "/api/projets").authenticated()
                         .requestMatchers(HttpMethod.PUT, "/api/projets/**").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/projets/**").authenticated()
@@ -59,18 +59,21 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/validations/**").authenticated()
                         .requestMatchers(HttpMethod.PUT, "/api/validations/**").authenticated()
 
+                        .requestMatchers("/api/auth/me").authenticated()
+
                         // Le reste nécessite une authentification
                         .anyRequest().authenticated()
                 )
                 .oauth2ResourceServer(oauth2 -> oauth2
-                        .jwt(jwt -> jwt.jwtAuthenticationConverter(new JwtAuthenticationConverter()))
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))
                         .authenticationEntryPoint((request, response, authException) -> {
                             System.out.println("🚨 Erreur auth sur: " + request.getRequestURI());
 
                             String uri = request.getRequestURI();
+                            // Liste des endpoints publics
                             if (uri.equals("/") || uri.equals("/accueil") ||
                                     uri.startsWith("/static") || uri.startsWith("/assets") ||
-                                    uri.equals("/api/auth/login") ||
+                                    uri.startsWith("/api/auth/") ||
                                     (uri.startsWith("/api/projets") && request.getMethod().equals("GET")) ||
                                     (uri.startsWith("/api/validations") && request.getMethod().equals("GET"))) {
                                 response.setStatus(HttpServletResponse.SC_OK);
@@ -84,10 +87,23 @@ public class SecurityConfig {
         return http.build();
     }
 
+    /**
+     * Décodeur JWT pour Keycloak
+     */
     @Bean
     public JwtDecoder jwtDecoder() {
         String jwkSetUri = "https://refonte.seneau.sn/realms/auth2-dev/protocol/openid-connect/certs";
         return NimbusJwtDecoder.withJwkSetUri(jwkSetUri).build();
+    }
+
+    /**
+     * Convertisseur pour extraire les rôles du JWT
+     */
+    @Bean
+    public JwtAuthenticationConverter jwtAuthenticationConverter() {
+        JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
+        // Vous pouvez personnaliser ici l'extraction des rôles si nécessaire
+        return converter;
     }
 
     @Bean
@@ -95,6 +111,9 @@ public class SecurityConfig {
         return new BCryptPasswordEncoder();
     }
 
+    /**
+     * Configuration CORS
+     */
     @Bean
     public CorsFilter corsFilter() {
         CorsConfiguration config = new CorsConfiguration();

@@ -83,6 +83,18 @@
         </dependency>
 
 
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.keycloak</groupId>
+            <artifactId>keycloak-spring-boot-starter</artifactId>
+            <version>25.0.3</version>
+        </dependency>
+
+
         <!-- Base de données (choisis entre H2 pour test ou MySQL pour prod) -->
         <dependency>
             <groupId>com.h2database</groupId>
