@@ -4,6 +4,8 @@ import com.challenge_digital.cila_bokk.model.Historique;
 import com.challenge_digital.cila_bokk.repository.HistoriqueRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -13,10 +15,11 @@ public class HistoriqueService {
 
     private final HistoriqueRepository historiqueRepository;
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void logAction(String action, Long idAgent, Long projetId) {
         Historique historique = new Historique();
         historique.setAction(action);
-        historique.setIdAgent(idAgent);
+        historique.setIdAgent(idAgent);  // nullable = true si deleteProjet
         historique.setProjetId(projetId);
         historiqueRepository.save(historique);
         System.out.println("📝 Action loggée: " + action);

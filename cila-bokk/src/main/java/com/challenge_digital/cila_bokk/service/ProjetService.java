@@ -58,7 +58,6 @@ public class ProjetService {
                 .collect(Collectors.toList());
     }
 
-    // ✅ Création d’un projet
     @Transactional
     public ProjetDTO createProjet(CreateProjetRequest request) {
         long nbProjets = projetRepository.countByIdAgentSoumissionAndSoumis(request.getIdAgentSoumission(), true);
@@ -81,30 +80,22 @@ public class ProjetService {
         projet.setIdAgentSoumission(request.getIdAgentSoumission());
         projet.setSoumis(false);
 
-        // ✅ Conversion matricules → IDs
+        // ✅ Remplir les membres directement
         if (request.getMembresEquipe() != null) {
-            List<Long> membresIds = request.getMembresEquipe()
-                    .stream()
-                    .map(m -> {
-                        if (m.getMatricule() != null) {
-                            try {
-                                return Long.parseLong(m.getMatricule());
-                            } catch (NumberFormatException e) {
-                                return null;
-                            }
-                        }
-                        return null;
-                    })
-                    .filter(memberId -> memberId != null)
-                    .collect(Collectors.toList());
-            projet.setMembresEquipe(membresIds);
+            if (request.getMembresEquipe().size() >= 1) {
+                projet.setMembre1Id(Long.parseLong(request.getMembresEquipe().get(0).getMatricule()));
+                projet.setMembre1Matricule(request.getMembresEquipe().get(0).getMatricule());
+            }
+            if (request.getMembresEquipe().size() == 2) {
+                projet.setMembre2Id(Long.parseLong(request.getMembresEquipe().get(1).getMatricule()));
+                projet.setMembre2Matricule(request.getMembresEquipe().get(1).getMatricule());
+            }
         }
 
         Projet saved = projetRepository.save(projet);
         return convertToDTO(saved);
     }
 
-    // ✅ Mise à jour d’un projet
     @Transactional
     public ProjetDTO updateProjet(Long id, CreateProjetRequest request) {
         Projet projet = projetRepository.findById(id)
@@ -122,27 +113,27 @@ public class ProjetService {
         projet.setIndicateurs(request.getIndicateurs());
         projet.setActeurs(request.getActeurs());
 
+        // ✅ Mettre à jour les membres
+        projet.setMembre1Id(null);
+        projet.setMembre1Matricule(null);
+        projet.setMembre2Id(null);
+        projet.setMembre2Matricule(null);
+
         if (request.getMembresEquipe() != null) {
-            List<Long> membresIds = request.getMembresEquipe()
-                    .stream()
-                    .map(m -> {
-                        if (m.getMatricule() != null) {
-                            try {
-                                return Long.parseLong(m.getMatricule());
-                            } catch (NumberFormatException e) {
-                                return null;
-                            }
-                        }
-                        return null;
-                    })
-                    .filter(memberId -> memberId != null)
-                    .collect(Collectors.toList());
-            projet.setMembresEquipe(membresIds);
+            if (request.getMembresEquipe().size() >= 1) {
+                projet.setMembre1Id(Long.parseLong(request.getMembresEquipe().get(0).getMatricule()));
+                projet.setMembre1Matricule(request.getMembresEquipe().get(0).getMatricule());
+            }
+            if (request.getMembresEquipe().size() == 2) {
+                projet.setMembre2Id(Long.parseLong(request.getMembresEquipe().get(1).getMatricule()));
+                projet.setMembre2Matricule(request.getMembresEquipe().get(1).getMatricule());
+            }
         }
 
         Projet updated = projetRepository.save(projet);
         return convertToDTO(updated);
     }
+
 
     // ✅ Soumission d’un projet
     @Transactional
@@ -221,25 +212,6 @@ public class ProjetService {
             dto.setAgentFonction(agent.get("fonction") != null ? agent.get("fonction").toString() : null);
         }
 
-        // ✅ Membres
-        List<ProjetDTO.MembreEquipeDTO> membresDTO = projet.getMembresEquipe() != null
-                ? projet.getMembresEquipe()
-                .stream()
-                .map(memberId -> {
-                    Map<String, Object> membre = agentService.getAgentById(memberId);
-                    if (membre != null && membre.get("fullName") != null) {
-                        return new ProjetDTO.MembreEquipeDTO(
-                                (String) membre.get("fullName"),
-                                null,
-                                String.valueOf(membre.get("matricule"))
-                        );
-                    } else {
-                        return new ProjetDTO.MembreEquipeDTO("Inconnu", null, null);
-                    }
-                })
-                .collect(Collectors.toList())
-                : List.of();
-        dto.setMembresEquipe(membresDTO);
 
         // ✅ Validations (désactivé si service manquant)
         dto.setValidations(List.of());

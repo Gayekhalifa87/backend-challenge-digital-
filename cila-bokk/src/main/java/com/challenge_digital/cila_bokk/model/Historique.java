@@ -29,7 +29,7 @@ public class Historique {
     @Column(nullable = false)
     private LocalDateTime dateAction;
 
-    @Column(nullable = false)
+    @Column(nullable = true)
     private Long idAgent;
 
     @Column(nullable = true)

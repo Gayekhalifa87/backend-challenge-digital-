@@ -1,3 +1,4 @@
+//
 package com.challenge_digital.cila_bokk.service.external;
 
 import com.challenge_digital.cila_bokk.config.KeycloakUserService;
@@ -5,9 +6,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -17,10 +17,6 @@ public class AgentService {
     private final AgentApiClient agentFeignClient;
     private final KeycloakUserService keycloakUserService;
 
-    /**
-     * 🔹 Récupère tous les agents depuis l'API externe.
-     * 🔹 Retourne une liste vide si aucun agent n'est trouvé.
-     */
     public List<Map<String, Object>> getAllAgents() {
         try {
             Map<String, Object> response = agentFeignClient.getAllAgents(0, 100000);
@@ -51,8 +47,7 @@ public class AgentService {
     }
 
     /**
-     * 🔹 Trouve l'agent correspondant à l'utilisateur Keycloak connecté
-     * Recherche par email, puis username ou matricule
+     * 🔹 Récupère l'agent connecté avec TOUTES ses informations enrichies
      */
     public Map<String, Object> getConnectedAgentDetails() {
         String emailFromToken = keycloakUserService.getEmail();
@@ -68,12 +63,11 @@ public class AgentService {
             return Map.of("message", "Aucun agent disponible");
         }
 
-        return agents.stream()
-                .filter(agent -> {
-                    // Conversion sécurisée en String pour éviter ClassCastException
-                    String agentEmail = String.valueOf(agent.getOrDefault("email", "")).toLowerCase();
-                    String agentUsername = String.valueOf(agent.getOrDefault("username", "")).toLowerCase();
-                    String agentMatricule = String.valueOf(agent.getOrDefault("matricule", "")).toLowerCase();
+        Map<String, Object> agent = agents.stream()
+                .filter(a -> {
+                    String agentEmail = String.valueOf(a.getOrDefault("email", "")).toLowerCase();
+                    String agentUsername = String.valueOf(a.getOrDefault("username", "")).toLowerCase();
+                    String agentMatricule = String.valueOf(a.getOrDefault("matricule", "")).toLowerCase();
 
                     return (emailFromToken != null && emailFromToken.toLowerCase().equals(agentEmail))
                             || (usernameOrMatricule != null && (
@@ -82,50 +76,134 @@ public class AgentService {
                     ));
                 })
                 .findFirst()
-                .orElse(Map.of("message", "Aucun agent trouvé pour " + (emailFromToken != null ? emailFromToken : usernameOrMatricule)));
+                .orElse(null);
+
+        if (agent == null) {
+            return Map.of("message", "Aucun agent trouvé pour " +
+                    (emailFromToken != null ? emailFromToken : usernameOrMatricule));
+        }
+
+        // ✅ Enrichir avec les informations d'entités
+        return enrichAgentWithEntites(agent);
+    }
+
+    /**
+     * 🔹 Enrichit un agent avec ses informations d'entités complètes
+     */
+    private Map<String, Object> enrichAgentWithEntites(Map<String, Object> agent) {
+        Map<String, Object> enrichedAgent = new HashMap<>(agent);
+
+        List<Map<String, Object>> entites = getAllEntites();
+        if (entites.isEmpty()) {
+            return enrichedAgent;
+        }
+
+        // Récupérer les entités liées (direction, établissement, équipe)
+        Map<String, Object> direction = (Map<String, Object>) agent.get("direction");
+        Map<String, Object> etablissement = (Map<String, Object>) agent.get("etablissement");
+        Map<String, Object> equipe = (Map<String, Object>) agent.get("equipe");
+
+        // Enrichir la direction
+        if (direction != null && direction.get("id") != null) {
+            enrichedAgent.put("directionDetails", findEntiteById(entites, direction.get("id")));
+        }
+
+        // Enrichir l'établissement
+        if (etablissement != null && etablissement.get("id") != null) {
+            enrichedAgent.put("etablissementDetails", findEntiteById(entites, etablissement.get("id")));
+        }
+
+        // Enrichir l'équipe
+        if (equipe != null && equipe.get("id") != null) {
+            enrichedAgent.put("equipeDetails", findEntiteById(entites, equipe.get("id")));
+        }
+
+        return enrichedAgent;
+    }
+
+    /**
+     * 🔹 Trouve une entité par son ID
+     */
+    private Map<String, Object> findEntiteById(List<Map<String, Object>> entites, Object entiteId) {
+        return entites.stream()
+                .filter(e -> {
+                    Object id = e.get("id");
+                    return id != null && id.toString().equals(entiteId.toString());
+                })
+                .findFirst()
+                .orElse(null);
     }
 
     public Map<String, Object> getAgentById(Long id) {
         try {
-            return agentFeignClient.getAgentById(id);
+            Map<String, Object> agent = agentFeignClient.getAgentById(id);
+            return enrichAgentWithEntites(agent);
         } catch (Exception e) {
             log.error("Erreur lors de la récupération de l'agent avec ID {}", id, e);
             return Map.of("message", "Agent introuvable pour l'ID " + id);
         }
     }
 
-
-
-
-
-    public Map<String, Object> getConnectedAgentWithEntites() {
-        // Récupération de l'agent connecté
-        Map<String, Object> agent = getConnectedAgentDetails();
-
-        if (agent.containsKey("message")) {
-            return agent; // Aucun agent trouvé
+    /**
+     * 🔹 Recherche des agents par matricules (pour les équipes)
+     * @param matricules Liste des matricules à rechercher
+     * @return Liste des agents trouvés avec leurs infos complètes
+     */
+    public List<Map<String, Object>> getAgentsByMatricules(List<String> matricules) {
+        if (matricules == null || matricules.isEmpty()) {
+            return Collections.emptyList();
         }
 
-        // Récupération de toutes les entités
-        List<Map<String, Object>> entites = getAllEntites();
-        if (entites.isEmpty()) {
-            return Map.of("agent", agent, "entites", Collections.emptyList());
+        List<Map<String, Object>> agents = getAllAgents();
+
+        return matricules.stream()
+                .map(matricule -> agents.stream()
+                        .filter(agent -> {
+                            String agentMatricule = String.valueOf(agent.getOrDefault("matricule", ""));
+                            return agentMatricule.equals(matricule);
+                        })
+                        .findFirst()
+                        .map(this::enrichAgentWithEntites)
+                        .orElse(Map.of(
+                                "matricule", matricule,
+                                "fullName", "Agent inconnu",
+                                "error", "Matricule non trouvé"
+                        ))
+                )
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 🔹 Valide qu'une équipe ne dépasse pas 3 membres et que tous existent
+     * @param matricules Liste des matricules à valider
+     * @return Map avec 'valid' (boolean) et 'errors' (liste des erreurs)
+     */
+    public Map<String, Object> validateEquipe(List<String> matricules) {
+        List<String> errors = new ArrayList<>();
+
+        if (matricules == null || matricules.isEmpty()) {
+            return Map.of("valid", true);
         }
 
-        // Exemple : filtrer les entités liées à l'agent
-        // Suppose que l'agent a un champ "entiteId" ou "entitesIds"
-        Object agentEntiteId = agent.get("entiteId"); // peut être Integer ou String
-        List<Map<String, Object>> agentEntites = entites.stream()
-                .filter(entite -> {
-                    Object entiteId = entite.get("id");
-                    return entiteId != null && entiteId.toString().equals(agentEntiteId.toString());
-                })
-                .toList();
+        if (matricules.size() > 3) {
+            errors.add("Une équipe ne peut pas dépasser 3 membres (incluant le porteur)");
+        }
+
+        List<Map<String, Object>> agents = getAgentsByMatricules(matricules);
+        agents.stream()
+                .filter(agent -> agent.containsKey("error"))
+                .forEach(agent -> errors.add("Matricule " + agent.get("matricule") + " non trouvé"));
 
         return Map.of(
-                "agent", agent,
-                "entites", agentEntites
+                "valid", errors.isEmpty(),
+                "errors", errors,
+                "foundAgents", agents.stream()
+                        .filter(agent -> !agent.containsKey("error"))
+                        .collect(Collectors.toList())
         );
     }
 
+    public Map<String, Object> getConnectedAgentWithEntites() {
+        return getConnectedAgentDetails();
+    }
 }

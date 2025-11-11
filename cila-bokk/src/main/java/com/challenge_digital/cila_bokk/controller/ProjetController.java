@@ -62,40 +62,104 @@ public class ProjetController {
         return ResponseEntity.ok(projetService.countBrouillons(agentId));
     }
 
-    @PostMapping
-    public ResponseEntity<?> createProjet(@RequestBody CreateProjetRequest request) {
+    /**
+     * ✅ Nouveau: Valider une équipe avant soumission
+     * Permet au frontend de vérifier que les matricules sont valides
+     */
+    @PostMapping("/validate-equipe")
+    public ResponseEntity<?> validateEquipe(@RequestBody List<String> matricules) {
         try {
-            return ResponseEntity.ok(projetService.createProjet(request));
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+            Map<String, Object> validation = agentService.validateEquipe(matricules);
+            return ResponseEntity.ok(validation);
         } catch (Exception e) {
-            return ResponseEntity.status(500).body(Map.of("message", "Erreur: " + e.getMessage()));
+            return ResponseEntity.status(500)
+                    .body(Map.of("message", "Erreur lors de la validation: " + e.getMessage()));
         }
     }
 
-    @PutMapping("/{id}")
-    public ResponseEntity<?> updateProjet(@PathVariable Long id, @RequestBody CreateProjetRequest request) {
+    /**
+     * ✅ Nouveau: Rechercher des agents par matricules
+     * Utile pour l'autocomplétion dans le formulaire
+     */
+    @PostMapping("/search-agents")
+    public ResponseEntity<?> searchAgentsByMatricules(@RequestBody List<String> matricules) {
         try {
-            return ResponseEntity.ok(projetService.updateProjet(id, request));
+            List<Map<String, Object>> agents = agentService.getAgentsByMatricules(matricules);
+            return ResponseEntity.ok(agents);
+        } catch (Exception e) {
+            return ResponseEntity.status(500)
+                    .body(Map.of("message", "Erreur lors de la recherche: " + e.getMessage()));
+        }
+    }
+
+    @PostMapping
+    public ResponseEntity<?> createProjet(@RequestBody CreateProjetRequest request) {
+        try {
+            // ✅ Récupérer l'agent connecté depuis Keycloak
+            Map<String, Object> connectedAgent = agentService.getConnectedAgentDetails();
+
+            if (connectedAgent == null || connectedAgent.containsKey("message")) {
+                return ResponseEntity.status(401).body(Map.of(
+                        "message", "Utilisateur non authentifié ou introuvable"
+                ));
+            }
+
+            // ✅ Injecter l'ID de l'agent connecté dans la requête
+            Long idAgent = Long.valueOf(String.valueOf(connectedAgent.get("id")));
+            request.setIdAgentSoumission(idAgent);
+
+            // ✅ Créer le projet avec cet agent
+            ProjetDTO created = projetService.createProjet(request);
+
+            // ✅ Réponse enrichie avec infos agent + projet créé
+            return ResponseEntity.ok(Map.of(
+                    "message", "Projet créé avec succès",
+                    "agent", connectedAgent,
+                    "projet", created
+            ));
+
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("message", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(500)
+                    .body(Map.of("message", "Erreur: " + e.getMessage()));
+        }
+    }
+
+
+    @PutMapping("/{id}")
+    public ResponseEntity<?> updateProjet(
+            @PathVariable Long id,
+            @RequestBody CreateProjetRequest request
+    ) {
+        try {
+            ProjetDTO updated = projetService.updateProjet(id, request);
+            return ResponseEntity.ok(updated);
         } catch (IllegalStateException e) {
-            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+            return ResponseEntity.badRequest()
+                    .body(Map.of("message", e.getMessage()));
         } catch (RuntimeException e) {
             return ResponseEntity.notFound().build();
         } catch (Exception e) {
-            return ResponseEntity.status(500).body(Map.of("message", "Erreur: " + e.getMessage()));
+            return ResponseEntity.status(500)
+                    .body(Map.of("message", "Erreur: " + e.getMessage()));
         }
     }
 
     @PostMapping("/{id}/soumettre")
     public ResponseEntity<?> soumettreProjet(@PathVariable Long id) {
         try {
-            return ResponseEntity.ok(projetService.soumettreProjet(id));
+            ProjetDTO soumis = projetService.soumettreProjet(id);
+            return ResponseEntity.ok(soumis);
         } catch (IllegalStateException e) {
-            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+            return ResponseEntity.badRequest()
+                    .body(Map.of("message", e.getMessage()));
         } catch (RuntimeException e) {
             return ResponseEntity.notFound().build();
         } catch (Exception e) {
-            return ResponseEntity.status(500).body(Map.of("message", "Erreur: " + e.getMessage()));
+            return ResponseEntity.status(500)
+                    .body(Map.of("message", "Erreur: " + e.getMessage()));
         }
     }
 
@@ -103,16 +167,20 @@ public class ProjetController {
     public ResponseEntity<?> deleteProjet(@PathVariable Long id) {
         try {
             boolean deleted = projetService.deleteProjet(id);
-            return deleted ? ResponseEntity.noContent().build() : ResponseEntity.notFound().build();
+            return deleted ?
+                    ResponseEntity.noContent().build() :
+                    ResponseEntity.notFound().build();
         } catch (IllegalStateException e) {
-            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+            return ResponseEntity.badRequest()
+                    .body(Map.of("message", e.getMessage()));
         } catch (Exception e) {
-            return ResponseEntity.status(500).body(Map.of("message", "Erreur: " + e.getMessage()));
+            return ResponseEntity.status(500)
+                    .body(Map.of("message", "Erreur: " + e.getMessage()));
         }
     }
 
     /**
-     * ✅ Endpoint pour récupérer les projets de l'agent connecté
+     * ✅ Endpoint pour récupérer les projets de l'agent connecté avec infos complètes
      */
     @GetMapping("/me")
     public ResponseEntity<?> getMesProjets() {
@@ -126,9 +194,13 @@ public class ProjetController {
             Long agentId = Long.valueOf(String.valueOf(connectedAgent.get("id")));
             List<ProjetDTO> projets = projetService.getProjetsByAgent(agentId);
 
-            return ResponseEntity.ok(projets);
+            return ResponseEntity.ok(Map.of(
+                    "agent", connectedAgent,
+                    "projets", projets
+            ));
         } catch (Exception e) {
-            return ResponseEntity.status(500).body(Map.of("message", "Erreur lors de la récupération des projets: " + e.getMessage()));
+            return ResponseEntity.status(500)
+                    .body(Map.of("message", "Erreur lors de la récupération des projets: " + e.getMessage()));
         }
     }
 }

@@ -29,7 +29,8 @@ public interface ProjetRepository extends JpaRepository<Projet, Long> {
 
     List<Projet> findBySoumis(Boolean soumis);
 
-    @Query("SELECT COUNT(p) FROM Projet p WHERE p.idAgentSoumission = :agentId OR :agentId MEMBER OF p.membresEquipe")
+
+    @Query("SELECT COUNT(p) FROM Projet p WHERE p.idAgentSoumission = :agentId OR p.membre1Id = :agentId OR p.membre2Id = :agentId")
     long countByAgentId(@Param("agentId") Long agentId);
 
 }
