@@ -7,27 +7,16 @@ import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.web.cors.CorsConfiguration;
-import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-import org.springframework.web.filter.CorsFilter;
 
-import java.util.List;
-
-/**
- * Configuration de sécurité avec Keycloak OAuth2
- * Protège les endpoints sensibles et configure CORS
- */
 @Configuration
-@EnableWebSecurity
 @EnableMethodSecurity
 public class SecurityConfig {
+
+    private static final String JWKS_URI = "https://refonte.seneau.sn/realms/auth2-dev/protocol/openid-connect/certs";
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -35,78 +24,23 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .cors(Customizer.withDefaults())
                 .authorizeHttpRequests(auth -> auth
-                        // ✅ Endpoints publics
                         .requestMatchers("/", "/accueil", "/login", "/static/**", "/assets/**").permitAll()
-
-                        // ✅ API publique : consultation des projets
-                        .requestMatchers(HttpMethod.GET, "/api/projets").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/projets/count").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/projets/{id}").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/projets/agent/{agentId}").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/projets/statut/{statut}").permitAll()
-
-                        // ✅ API publique : consultation des validations
-                        .requestMatchers(HttpMethod.GET, "/api/validations/**").permitAll()
-
-                        // ✅ Login public
-                        .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
-
-                        // ✅ Endpoints protégés (création/modification/suppression)
-                        .requestMatchers(HttpMethod.POST, "/api/projets").authenticated()
-                        .requestMatchers(HttpMethod.PUT, "/api/projets/**").authenticated()
-                        .requestMatchers(HttpMethod.DELETE, "/api/projets/**").authenticated()
-
-                        .requestMatchers(HttpMethod.POST, "/api/validations/**").authenticated()
-                        .requestMatchers(HttpMethod.PUT, "/api/validations/**").authenticated()
-
-                        // Le reste nécessite une authentification
+                        .requestMatchers(HttpMethod.GET, "/api/employes/**").authenticated()
                         .anyRequest().authenticated()
                 )
                 .oauth2ResourceServer(oauth2 -> oauth2
-                        .jwt(jwt -> jwt.jwtAuthenticationConverter(new JwtAuthenticationConverter()))
                         .authenticationEntryPoint((request, response, authException) -> {
-                            System.out.println("🚨 Erreur auth sur: " + request.getRequestURI());
-
-                            String uri = request.getRequestURI();
-                            if (uri.equals("/") || uri.equals("/accueil") ||
-                                    uri.startsWith("/static") || uri.startsWith("/assets") ||
-                                    uri.equals("/api/auth/login") ||
-                                    (uri.startsWith("/api/projets") && request.getMethod().equals("GET")) ||
-                                    (uri.startsWith("/api/validations") && request.getMethod().equals("GET"))) {
-                                response.setStatus(HttpServletResponse.SC_OK);
-                                return;
-                            }
-
                             response.sendError(HttpServletResponse.SC_UNAUTHORIZED, authException.getMessage());
                         })
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(new JwtAuthenticationConverter()))
                 );
 
         return http.build();
     }
 
+    // ✅ Bean JwtDecoder nécessaire pour valider les JWT via Keycloak
     @Bean
     public JwtDecoder jwtDecoder() {
-        String jwkSetUri = "https://refonte.seneau.sn/realms/auth2-dev/protocol/openid-connect/certs";
-        return NimbusJwtDecoder.withJwkSetUri(jwkSetUri).build();
-    }
-
-    @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
-    }
-
-    @Bean
-    public CorsFilter corsFilter() {
-        CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOriginPatterns(List.of("http://localhost:*", "https://refonte.seneau.sn"));
-        config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        config.setAllowedHeaders(List.of("*"));
-        config.setAllowCredentials(true);
-        config.setExposedHeaders(List.of("Authorization"));
-
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", config);
-
-        return new CorsFilter(source);
+        return NimbusJwtDecoder.withJwkSetUri(JWKS_URI).build();
     }
 }

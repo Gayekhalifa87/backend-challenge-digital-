@@ -4,6 +4,7 @@ import com.challenge_digital.cila_bokk.dto.CreateProjetRequest;
 import com.challenge_digital.cila_bokk.dto.ProjetDTO;
 import com.challenge_digital.cila_bokk.model.StatutProjet;
 import com.challenge_digital.cila_bokk.service.ProjetService;
+import com.challenge_digital.cila_bokk.service.external.AgentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -17,6 +18,7 @@ import java.util.Map;
 public class ProjetController {
 
     private final ProjetService projetService;
+    private final AgentService agentService;
 
     @GetMapping
     public ResponseEntity<List<ProjetDTO>> getAllProjets() {
@@ -106,6 +108,27 @@ public class ProjetController {
             return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
         } catch (Exception e) {
             return ResponseEntity.status(500).body(Map.of("message", "Erreur: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * ✅ Endpoint pour récupérer les projets de l'agent connecté
+     */
+    @GetMapping("/me")
+    public ResponseEntity<?> getMesProjets() {
+        try {
+            Map<String, Object> connectedAgent = agentService.getConnectedAgentDetails();
+
+            if (connectedAgent.containsKey("message")) {
+                return ResponseEntity.status(404).body(connectedAgent);
+            }
+
+            Long agentId = Long.valueOf(String.valueOf(connectedAgent.get("id")));
+            List<ProjetDTO> projets = projetService.getProjetsByAgent(agentId);
+
+            return ResponseEntity.ok(projets);
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Map.of("message", "Erreur lors de la récupération des projets: " + e.getMessage()));
         }
     }
 }

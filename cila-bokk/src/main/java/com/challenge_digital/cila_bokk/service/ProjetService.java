@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -20,7 +21,8 @@ import java.util.stream.Collectors;
 public class ProjetService {
 
     private final ProjetRepository projetRepository;
-    private final ValidationService validationService;
+    // ✅ On commente ce champ si ValidationService n’est pas encore implémenté
+    // private final ValidationService validationService;
     private final AgentService agentService;
 
     // ✅ Récupère tous les projets
@@ -59,13 +61,11 @@ public class ProjetService {
     // ✅ Création d’un projet
     @Transactional
     public ProjetDTO createProjet(CreateProjetRequest request) {
-        // Vérifie qu’un agent ne dépasse pas 2 projets soumis
         long nbProjets = projetRepository.countByIdAgentSoumissionAndSoumis(request.getIdAgentSoumission(), true);
         if (nbProjets >= 2) {
             throw new IllegalArgumentException("L'agent a déjà soumis 2 projets maximum.");
         }
 
-        // Vérifie que l’équipe ne dépasse pas 2 membres
         if (request.getMembresEquipe() != null && request.getMembresEquipe().size() > 2) {
             throw new IllegalArgumentException("Une équipe ne peut pas dépasser 2 membres.");
         }
@@ -81,11 +81,21 @@ public class ProjetService {
         projet.setIdAgentSoumission(request.getIdAgentSoumission());
         projet.setSoumis(false);
 
-        // Ajout des membres (IDs fictifs à récupérer via l'API agent)
+        // ✅ Conversion matricules → IDs
         if (request.getMembresEquipe() != null) {
             List<Long> membresIds = request.getMembresEquipe()
                     .stream()
-                    .map(m -> m.getMatricule() != null ? Long.parseLong(m.getMatricule()) : null)
+                    .map(m -> {
+                        if (m.getMatricule() != null) {
+                            try {
+                                return Long.parseLong(m.getMatricule());
+                            } catch (NumberFormatException e) {
+                                return null;
+                            }
+                        }
+                        return null;
+                    })
+                    .filter(memberId -> memberId != null)
                     .collect(Collectors.toList());
             projet.setMembresEquipe(membresIds);
         }
@@ -94,12 +104,12 @@ public class ProjetService {
         return convertToDTO(saved);
     }
 
+    // ✅ Mise à jour d’un projet
     @Transactional
     public ProjetDTO updateProjet(Long id, CreateProjetRequest request) {
         Projet projet = projetRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Projet non trouvé"));
 
-        // ✅ Vérifie que le projet n'est ni validé ni rejeté
         if (projet.getStatut() == StatutProjet.VALIDE || projet.getStatut() == StatutProjet.REJETE) {
             throw new IllegalStateException("Impossible de modifier ce projet : il a déjà été validé ou rejeté.");
         }
@@ -115,7 +125,17 @@ public class ProjetService {
         if (request.getMembresEquipe() != null) {
             List<Long> membresIds = request.getMembresEquipe()
                     .stream()
-                    .map(m -> m.getMatricule() != null ? Long.parseLong(m.getMatricule()) : null)
+                    .map(m -> {
+                        if (m.getMatricule() != null) {
+                            try {
+                                return Long.parseLong(m.getMatricule());
+                            } catch (NumberFormatException e) {
+                                return null;
+                            }
+                        }
+                        return null;
+                    })
+                    .filter(memberId -> memberId != null)
                     .collect(Collectors.toList());
             projet.setMembresEquipe(membresIds);
         }
@@ -124,10 +144,11 @@ public class ProjetService {
         return convertToDTO(updated);
     }
 
-    // ✅ Soumission
+    // ✅ Soumission d’un projet
     @Transactional
     public ProjetDTO soumettreProjet(Long id) {
-        Projet projet = projetRepository.findById(id).orElseThrow(() -> new RuntimeException("Projet non trouvé"));
+        Projet projet = projetRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Projet non trouvé"));
 
         if (projet.getSoumis()) {
             throw new IllegalStateException("Ce projet a déjà été soumis.");
@@ -136,7 +157,6 @@ public class ProjetService {
         projet.setSoumis(true);
         projet.setStatut(StatutProjet.EN_ATTENTE_MANAGER);
 
-        // Création de la première validation
         Validation validation = new Validation();
         validation.setNiveau(NiveauValidation.NIVEAU_1);
         validation.setStatut(StatutValidation.EN_ATTENTE);
@@ -146,6 +166,7 @@ public class ProjetService {
         return convertToDTO(saved);
     }
 
+    // ✅ Suppression
     @Transactional
     public boolean deleteProjet(Long id) {
         return projetRepository.findById(id)
@@ -159,6 +180,7 @@ public class ProjetService {
                 .orElse(false);
     }
 
+    // ✅ Compteurs
     public long getTotalProjets() {
         return projetRepository.count();
     }
@@ -171,7 +193,7 @@ public class ProjetService {
         return projetRepository.countByIdAgentSoumissionAndSoumis(idAgent, false);
     }
 
-    // Conversion entité -> DTO
+    // ✅ Conversion entité → DTO
     private ProjetDTO convertToDTO(Projet projet) {
         ProjetDTO dto = new ProjetDTO();
         dto.setId(projet.getId());
@@ -188,41 +210,39 @@ public class ProjetService {
         dto.setIdAgentSoumission(projet.getIdAgentSoumission());
         dto.setSoumis(projet.getSoumis());
 
-        // Agent principal
-        AgentApiDto agent = agentService.getAgentById(projet.getIdAgentSoumission());
-        if (agent != null) {
-            dto.setAgentNom(agent.getFullName());
-            dto.setAgentEmail(agent.getEmail());
-            dto.setAgentMatricule(agent.getMatricule() != null ? agent.getMatricule().toString() : null);
-            dto.setAgentDirection(agent.getDirection() != null ? agent.getDirection().getName() : null);
-            dto.setAgentService(agent.getRattachement() != null ? agent.getRattachement().getName() : null);
-            dto.setAgentFonction(agent.getFonction() != null ? agent.getFonction().getName() : null);
+        // ✅ Agent principal
+        Map<String, Object> agent = agentService.getAgentById(projet.getIdAgentSoumission());
+        if (agent != null && agent.get("fullName") != null) {
+            dto.setAgentNom((String) agent.get("fullName"));
+            dto.setAgentEmail((String) agent.get("email"));
+            dto.setAgentMatricule(String.valueOf(agent.get("matricule")));
+            dto.setAgentDirection(agent.get("direction") != null ? agent.get("direction").toString() : null);
+            dto.setAgentService(agent.get("rattachement") != null ? agent.get("rattachement").toString() : null);
+            dto.setAgentFonction(agent.get("fonction") != null ? agent.get("fonction").toString() : null);
         }
 
-        // Membres équipe
-        List<ProjetDTO.MembreEquipeDTO> membresDTO = projet.getMembresEquipe()
+        // ✅ Membres
+        List<ProjetDTO.MembreEquipeDTO> membresDTO = projet.getMembresEquipe() != null
+                ? projet.getMembresEquipe()
                 .stream()
-                .map(idMembre -> {
-                    AgentApiDto membre = agentService.getAgentById(idMembre);
-                    if (membre != null) {
+                .map(memberId -> {
+                    Map<String, Object> membre = agentService.getAgentById(memberId);
+                    if (membre != null && membre.get("fullName") != null) {
                         return new ProjetDTO.MembreEquipeDTO(
-                                membre.getFullName(),
+                                (String) membre.get("fullName"),
                                 null,
-                                membre.getMatricule() != null ? membre.getMatricule().toString() : null
+                                String.valueOf(membre.get("matricule"))
                         );
                     } else {
                         return new ProjetDTO.MembreEquipeDTO("Inconnu", null, null);
                     }
                 })
-                .collect(Collectors.toList());
+                .collect(Collectors.toList())
+                : List.of();
         dto.setMembresEquipe(membresDTO);
 
-        // Validations
-        List<ValidationDTO> validations = projet.getValidations()
-                .stream()
-                .map(validationService::convertToDTO)
-                .collect(Collectors.toList());
-        dto.setValidations(validations);
+        // ✅ Validations (désactivé si service manquant)
+        dto.setValidations(List.of());
 
         return dto;
     }

@@ -1,19 +1,33 @@
 package com.challenge_digital.cila_bokk.service.external;
 
+import com.challenge_digital.cila_bokk.config.FeignAuthInterceptor;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 
-@FeignClient(name = "agent-api", url = "http://10.106.136.126:9003")
+import java.util.Map;
+
+@FeignClient(
+        name = "agent-api",
+        url = "http://10.106.136.126:9003/api/v1/agent2",
+        configuration = FeignAuthInterceptor.class
+)
 public interface AgentApiClient {
 
-    @GetMapping("/api/v1/agent2/agent")
-    AgentPageResponse getAllAgents(
+    @GetMapping("/agent")
+    Map<String, Object> getAllAgents(
+
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20000") int size
+            @RequestParam(defaultValue = "100000") int size
     );
 
-    @GetMapping("/api/v1/agent2/agent/{id}")
-    AgentApiDto getAgentById(@PathVariable Long id);
+    @GetMapping("/agent/{id}")
+    Map<String, Object> getAgentById(@PathVariable("id") Long id);
+
+    @GetMapping("/entite")
+    Map<String, Object> getAllEntites(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10000") int size
+    );
 }
