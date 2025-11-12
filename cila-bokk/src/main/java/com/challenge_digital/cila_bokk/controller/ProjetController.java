@@ -202,5 +202,6 @@ public class ProjetController {
             return ResponseEntity.status(500)
                     .body(Map.of("message", "Erreur lors de la récupération des projets: " + e.getMessage()));
         }
+
     }
 }

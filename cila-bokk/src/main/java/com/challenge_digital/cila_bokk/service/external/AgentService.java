@@ -203,6 +203,7 @@ public class AgentService {
         );
     }
 
+
     public Map<String, Object> getConnectedAgentWithEntites() {
         return getConnectedAgentDetails();
     }
