@@ -58,43 +58,96 @@ public class ProjetService {
                 .collect(Collectors.toList());
     }
 
-    @Transactional
-    public ProjetDTO createProjet(CreateProjetRequest request) {
-        long nbProjets = projetRepository.countByIdAgentSoumissionAndSoumis(request.getIdAgentSoumission(), true);
-        if (nbProjets >= 2) {
-            throw new IllegalArgumentException("L'agent a déjà soumis 2 projets maximum.");
-        }
-
-        if (request.getMembresEquipe() != null && request.getMembresEquipe().size() > 2) {
-            throw new IllegalArgumentException("Une équipe ne peut pas dépasser 2 membres.");
-        }
-
-        Projet projet = new Projet();
-        projet.setTitre(request.getTitre());
-        projet.setDescription(request.getDescription());
-        projet.setObjectif(request.getObjectif());
-        projet.setRessources(request.getRessources());
-        projet.setGains(request.getGains());
-        projet.setActeurs(request.getActeurs());
-        projet.setIndicateurs(request.getIndicateurs());
-        projet.setIdAgentSoumission(request.getIdAgentSoumission());
-        projet.setSoumis(false);
-
-        // ✅ Remplir les membres directement
-        if (request.getMembresEquipe() != null) {
-            if (request.getMembresEquipe().size() >= 1) {
-                projet.setMembre1Id(Long.parseLong(request.getMembresEquipe().get(0).getMatricule()));
-                projet.setMembre1Matricule(request.getMembresEquipe().get(0).getMatricule());
-            }
-            if (request.getMembresEquipe().size() == 2) {
-                projet.setMembre2Id(Long.parseLong(request.getMembresEquipe().get(1).getMatricule()));
-                projet.setMembre2Matricule(request.getMembresEquipe().get(1).getMatricule());
-            }
-        }
-
-        Projet saved = projetRepository.save(projet);
-        return convertToDTO(saved);
+//    @Transactional
+//    public ProjetDTO createProjet(CreateProjetRequest request) {
+//        long nbProjets = projetRepository.countByIdAgentSoumissionAndSoumis(request.getIdAgentSoumission(), true);
+//        if (nbProjets >= 2) {
+//            throw new IllegalArgumentException("L'agent a déjà soumis 2 projets maximum.");
+//        }
+//
+//        if (request.getMembresEquipe() != null && request.getMembresEquipe().size() > 2) {
+//            throw new IllegalArgumentException("Une équipe ne peut pas dépasser 2 membres.");
+//        }
+//
+//        Projet projet = new Projet();
+//        projet.setTitre(request.getTitre());
+//        projet.setDescription(request.getDescription());
+//        projet.setObjectif(request.getObjectif());
+//        projet.setRessources(request.getRessources());
+//        projet.setGains(request.getGains());
+//        projet.setActeurs(request.getActeurs());
+//        projet.setIndicateurs(request.getIndicateurs());
+//        projet.setIdAgentSoumission(request.getIdAgentSoumission());
+//        projet.setSoumis(true);
+//
+//        // ✅ Remplir les membres directement
+//        if (request.getMembresEquipe() != null) {
+//            if (request.getMembresEquipe().size() >= 1) {
+//                projet.setMembre1Id(Long.parseLong(request.getMembresEquipe().get(0).getMatricule()));
+//                projet.setMembre1Matricule(request.getMembresEquipe().get(0).getMatricule());
+//            }
+//            if (request.getMembresEquipe().size() == 2) {
+//                projet.setMembre2Id(Long.parseLong(request.getMembresEquipe().get(1).getMatricule()));
+//                projet.setMembre2Matricule(request.getMembresEquipe().get(1).getMatricule());
+//            }
+//        }
+//
+//        Projet saved = projetRepository.save(projet);
+//        return convertToDTO(saved);
+//    }
+@Transactional
+public ProjetDTO createProjet(CreateProjetRequest request) {
+    long nbProjets = projetRepository.countByIdAgentSoumissionAndSoumis(request.getIdAgentSoumission(), true);
+    if (nbProjets >= 2) {
+        throw new IllegalArgumentException("L'agent a déjà soumis 2 projets maximum.");
     }
+
+    if (request.getMembresEquipe() != null && request.getMembresEquipe().size() > 2) {
+        throw new IllegalArgumentException("Une équipe ne peut pas dépasser 2 membres.");
+    }
+
+    Projet projet = new Projet();
+    projet.setTitre(request.getTitre());
+    projet.setDescription(request.getDescription());
+    projet.setObjectif(request.getObjectif());
+    projet.setRessources(request.getRessources());
+    projet.setGains(request.getGains());
+    projet.setActeurs(request.getActeurs());
+    projet.setIndicateurs(request.getIndicateurs());
+    projet.setIdAgentSoumission(request.getIdAgentSoumission());
+    projet.setSoumis(true);
+
+    // ✅ Récupérer les IDs réels via AgentService
+    if (request.getMembresEquipe() != null && !request.getMembresEquipe().isEmpty()) {
+        List<String> matricules = request.getMembresEquipe().stream()
+                .map(m -> m.getMatricule())
+                .collect(Collectors.toList());
+
+        // Appel au service pour trouver les agents correspondants
+        List<Map<String, Object>> agentsTrouves = agentService.getAgentsByMatricules(matricules);
+
+        if (!agentsTrouves.isEmpty()) {
+            if (agentsTrouves.size() >= 1) {
+                Map<String, Object> membre1 = agentsTrouves.get(0);
+                Object id1 = membre1.get("id");
+                Object matricule1 = membre1.get("matricule");
+                if (id1 != null) projet.setMembre1Id(Long.valueOf(id1.toString()));
+                if (matricule1 != null) projet.setMembre1Matricule(matricule1.toString());
+            }
+            if (agentsTrouves.size() >= 2) {
+                Map<String, Object> membre2 = agentsTrouves.get(1);
+                Object id2 = membre2.get("id");
+                Object matricule2 = membre2.get("matricule");
+                if (id2 != null) projet.setMembre2Id(Long.valueOf(id2.toString()));
+                if (matricule2 != null) projet.setMembre2Matricule(matricule2.toString());
+            }
+        }
+    }
+
+    Projet saved = projetRepository.save(projet);
+    return convertToDTO(saved);
+}
+
 
     @Transactional
     public ProjetDTO updateProjet(Long id, CreateProjetRequest request) {
@@ -158,18 +211,35 @@ public class ProjetService {
     }
 
     // ✅ Suppression
+//    @Transactional
+//    public boolean deleteProjet(Long id) {
+//        return projetRepository.findById(id)
+//                .map(projet -> {
+//                    if (projet.getSoumis() && projet.getStatut() != StatutProjet.REJETE) {
+//                        throw new IllegalStateException("Impossible de supprimer un projet en cours de validation.");
+//                    }
+//                    projetRepository.delete(projet);
+//                    return true;
+//                })
+//                .orElse(false);
+//    }
     @Transactional
     public boolean deleteProjet(Long id) {
         return projetRepository.findById(id)
                 .map(projet -> {
-                    if (projet.getSoumis() && projet.getStatut() != StatutProjet.REJETE) {
-                        throw new IllegalStateException("Impossible de supprimer un projet en cours de validation.");
+                    // Autoriser la suppression uniquement si le statut est EN_ATTENTE_MANAGER ou REJETE
+                    if (projet.getStatut() != StatutProjet.EN_ATTENTE_MANAGER &&
+                            projet.getStatut() != StatutProjet.REJETE) {
+                        throw new IllegalStateException(
+                                "Impossible de supprimer un projet en cours de validation (dont le statut n'est ni EN_ATTENTE_MANAGER ni REJETE)."
+                        );
                     }
                     projetRepository.delete(projet);
                     return true;
                 })
                 .orElse(false);
     }
+
 
     // ✅ Compteurs
     public long getTotalProjets() {
