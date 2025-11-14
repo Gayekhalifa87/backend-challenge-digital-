@@ -22,6 +22,7 @@ public class ProjetDTO {
     private Long id;
     private String titre;
     private String description;
+    private String problematique;
     private String objectif;
     private String acteurs;
     private String ressources;

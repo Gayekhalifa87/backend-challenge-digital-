@@ -49,6 +49,12 @@ public class Projet {
     @Column(columnDefinition = "TEXT")
     private String acteurs;
 
+    @Column(columnDefinition = "TEXT")
+    private String teamName;
+
+    @Column(columnDefinition = "TEXT")
+    private String problematique;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = true)
     private StatutProjet statut = StatutProjet.EN_ATTENTE_MANAGER;

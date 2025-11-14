@@ -58,43 +58,6 @@ public class ProjetService {
                 .collect(Collectors.toList());
     }
 
-//    @Transactional
-//    public ProjetDTO createProjet(CreateProjetRequest request) {
-//        long nbProjets = projetRepository.countByIdAgentSoumissionAndSoumis(request.getIdAgentSoumission(), true);
-//        if (nbProjets >= 2) {
-//            throw new IllegalArgumentException("L'agent a déjà soumis 2 projets maximum.");
-//        }
-//
-//        if (request.getMembresEquipe() != null && request.getMembresEquipe().size() > 2) {
-//            throw new IllegalArgumentException("Une équipe ne peut pas dépasser 2 membres.");
-//        }
-//
-//        Projet projet = new Projet();
-//        projet.setTitre(request.getTitre());
-//        projet.setDescription(request.getDescription());
-//        projet.setObjectif(request.getObjectif());
-//        projet.setRessources(request.getRessources());
-//        projet.setGains(request.getGains());
-//        projet.setActeurs(request.getActeurs());
-//        projet.setIndicateurs(request.getIndicateurs());
-//        projet.setIdAgentSoumission(request.getIdAgentSoumission());
-//        projet.setSoumis(true);
-//
-//        // ✅ Remplir les membres directement
-//        if (request.getMembresEquipe() != null) {
-//            if (request.getMembresEquipe().size() >= 1) {
-//                projet.setMembre1Id(Long.parseLong(request.getMembresEquipe().get(0).getMatricule()));
-//                projet.setMembre1Matricule(request.getMembresEquipe().get(0).getMatricule());
-//            }
-//            if (request.getMembresEquipe().size() == 2) {
-//                projet.setMembre2Id(Long.parseLong(request.getMembresEquipe().get(1).getMatricule()));
-//                projet.setMembre2Matricule(request.getMembresEquipe().get(1).getMatricule());
-//            }
-//        }
-//
-//        Projet saved = projetRepository.save(projet);
-//        return convertToDTO(saved);
-//    }
 @Transactional
 public ProjetDTO createProjet(CreateProjetRequest request) {
     long nbProjets = projetRepository.countByIdAgentSoumissionAndSoumis(request.getIdAgentSoumission(), true);
@@ -107,7 +70,9 @@ public ProjetDTO createProjet(CreateProjetRequest request) {
     }
 
     Projet projet = new Projet();
+    projet.setTeamName(request.getTeamName());
     projet.setTitre(request.getTitre());
+    projet.setProblematique(request.getProblematique());
     projet.setDescription(request.getDescription());
     projet.setObjectif(request.getObjectif());
     projet.setRessources(request.getRessources());
@@ -160,6 +125,7 @@ public ProjetDTO createProjet(CreateProjetRequest request) {
 
         projet.setTitre(request.getTitre());
         projet.setDescription(request.getDescription());
+        projet.setProblematique(request.getProblematique());
         projet.setObjectif(request.getObjectif());
         projet.setRessources(request.getRessources());
         projet.setGains(request.getGains());
@@ -211,18 +177,6 @@ public ProjetDTO createProjet(CreateProjetRequest request) {
     }
 
     // ✅ Suppression
-//    @Transactional
-//    public boolean deleteProjet(Long id) {
-//        return projetRepository.findById(id)
-//                .map(projet -> {
-//                    if (projet.getSoumis() && projet.getStatut() != StatutProjet.REJETE) {
-//                        throw new IllegalStateException("Impossible de supprimer un projet en cours de validation.");
-//                    }
-//                    projetRepository.delete(projet);
-//                    return true;
-//                })
-//                .orElse(false);
-//    }
     @Transactional
     public boolean deleteProjet(Long id) {
         return projetRepository.findById(id)
@@ -260,6 +214,7 @@ public ProjetDTO createProjet(CreateProjetRequest request) {
         dto.setId(projet.getId());
         dto.setTitre(projet.getTitre());
         dto.setDescription(projet.getDescription());
+        dto.setProblematique(projet.getProblematique());
         dto.setObjectif(projet.getObjectif());
         dto.setRessources(projet.getRessources());
         dto.setGains(projet.getGains());
