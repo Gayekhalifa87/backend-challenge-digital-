@@ -38,11 +38,11 @@ public class ProjetController {
     public ResponseEntity<List<ProjetDTO>> getProjetsByAgent(@PathVariable Long agentId) {
         return ResponseEntity.ok(projetService.getProjetsByAgent(agentId));
     }
-
-    @GetMapping("/agent/{agentId}/brouillons")
-    public ResponseEntity<List<ProjetDTO>> getProjetsBrouillon(@PathVariable Long agentId) {
-        return ResponseEntity.ok(projetService.getProjetsBrouillon(agentId));
-    }
+//
+//    @GetMapping("/agent/{agentId}/brouillons")
+//    public ResponseEntity<List<ProjetDTO>> getProjetsBrouillon(@PathVariable Long agentId) {
+//        return ResponseEntity.ok(projetService.getProjetsBrouillon(agentId));
+//    }
 
     @GetMapping("/statut/{statut}")
     public ResponseEntity<List<ProjetDTO>> getProjetsByStatut(@PathVariable StatutProjet statut) {
@@ -397,10 +397,10 @@ public class ProjetController {
         return ResponseEntity.ok(projetService.countByStatut(statut));
     }
 
-    @GetMapping("/count/agent/{agentId}/brouillons")
-    public ResponseEntity<Long> countBrouillons(@PathVariable Long agentId) {
-        return ResponseEntity.ok(projetService.countBrouillons(agentId));
-    }
+//    @GetMapping("/count/agent/{agentId}/brouillons")
+//    public ResponseEntity<Long> countBrouillons(@PathVariable Long agentId) {
+//        return ResponseEntity.ok(projetService.countBrouillons(agentId));
+//    }
 
     @PostMapping("/validate-equipe")
     public ResponseEntity<?> validateEquipe(@RequestBody List<String> matricules) {
@@ -525,6 +525,33 @@ public class ProjetController {
         }
     }
 
+    //pour le compte du nombre de projet par agent
+
+    @GetMapping("/me/count")
+    public ResponseEntity<?> countMesProjets() {
+        try {
+            Map<String, Object> connectedAgent = agentService.getConnectedAgentDetails();
+
+            if (connectedAgent.containsKey("message")) {
+                return ResponseEntity.status(404).body(connectedAgent);
+            }
+
+            Long agentId = convertToLong(connectedAgent.get("id"));
+
+            long totalProjets = projetService.getNombreProjetsAgent(agentId);
+
+            return ResponseEntity.ok(Map.of(
+                    "agentId", agentId,
+                    "totalProjets", totalProjets
+            ));
+
+        } catch (Exception e) {
+            return ResponseEntity.status(500)
+                    .body(Map.of("message", "Erreur lors du comptage des projets: " + e.getMessage()));
+        }
+    }
+
+
     /**
      * ✅ Utilitaire pour convertir Integer/Long/String en Long
      */
@@ -533,5 +560,300 @@ public class ProjetController {
         if (value instanceof Long) return (Long) value;
         if (value instanceof Integer) return ((Integer) value).longValue();
         return Long.valueOf(value.toString());
+    }
+
+
+
+
+    @PatchMapping("/{id}/valider-manager")
+    public ResponseEntity<?> validerParManager(@PathVariable Long id) {
+        try {
+            ProjetDTO updated = projetService.validerParManager(id);
+            return ResponseEntity.ok(Map.of(
+                    "message", "Statut changé avec succès : EN_ATTENTE_MANAGER → EN_ATTENTE_COMITE",
+                    "projet", updated
+            ));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("message", e.getMessage()));
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        } catch (Exception e) {
+            return ResponseEntity.status(500)
+                    .body(Map.of("message", "Erreur: " + e.getMessage()));
+        }
+    }
+
+
+
+    // Validation finale par le comité
+    @PatchMapping("/{id}/valider-comite")
+    public ResponseEntity<?> validerParComite(@PathVariable Long id) {
+        try {
+            ProjetDTO updated = projetService.validerParComite(id);
+            return ResponseEntity.ok(Map.of(
+                    "message", "Projet validé par le comité",
+                    "projet", updated
+            ));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    // Rejet par le comité
+    @PatchMapping("/{id}/rejeter-comite")
+    public ResponseEntity<?> rejeterParComite(@PathVariable Long id) {
+        try {
+            ProjetDTO updated = projetService.rejeterParComite(id);
+            return ResponseEntity.ok(Map.of(
+                    "message", "Projet rejeté par le comité",
+                    "projet", updated
+            ));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    // Rejet par le manager
+    @PatchMapping("/{id}/rejeter-manager")
+    public ResponseEntity<?> rejeterParManager(@PathVariable Long id) {
+        try {
+            ProjetDTO updated = projetService.rejeterParManager(id);
+            return ResponseEntity.ok(Map.of(
+                    "message", "Projet rejeté par le manager",
+                    "projet", updated
+            ));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        }
+    }
+
+
+    // Annuler validation ou rejet
+    @PatchMapping("/{id}/annuler")
+    public ResponseEntity<?> annulerAction(@PathVariable Long id) {
+        try {
+            ProjetDTO updated = projetService.annulerAction(id);
+            return ResponseEntity.ok(Map.of(
+                    "message", "Action annulée avec succès, statut précédent restauré",
+                    "projet", updated
+            ));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Map.of("message", "Erreur: " + e.getMessage()));
+        }
+    }
+
+    //recup projet par entite
+    @GetMapping("/dt")
+    public ResponseEntity<?> getProjetsParRattachement() {
+        try {
+            // 1️⃣ Récupérer l'agent connecté
+            Map<String, Object> connectedAgent = agentService.getConnectedAgentDetails();
+            if (connectedAgent == null || connectedAgent.containsKey("message")) {
+                return ResponseEntity.status(404).body(Map.of(
+                        "error", "not_found",
+                        "message", "Utilisateur non connecté ou introuvable"
+                ));
+            }
+
+            // 2️⃣ Extraire le rattachement
+            Map<String, Object> rattachement = (Map<String, Object>) connectedAgent.get("rattachement");
+            if (rattachement == null) {
+                return ResponseEntity.status(400).body(Map.of(
+                        "error", "no_rattachement",
+                        "message", "L'agent connecté n'a pas de rattachement associé"
+                ));
+            }
+
+            // 3️⃣ Récupérer le code et le nom du rattachement
+            String rattachementCode = (String) rattachement.get("code");
+            String rattachementName = (String) rattachement.get("name");
+
+            // 4️⃣ Récupérer tous les agents
+            List<Map<String, Object>> allAgents = agentService.getAllAgents();
+
+            // 5️⃣ Filtrer les agents ayant le même rattachement
+            List<Long> agentsCorrespondants = allAgents.stream()
+                    .filter(agent -> {
+                        Object rattObj = agent.get("rattachement");
+                        if (rattObj instanceof Map) {
+                            Map<String, Object> rat = (Map<String, Object>) rattObj;
+                            String code = rat.get("code") != null ? rat.get("code").toString() : "";
+                            String name = rat.get("name") != null ? rat.get("name").toString() : "";
+                            return rattachementCode.equals(code) && rattachementName.equalsIgnoreCase(name);
+                        }
+                        return false;
+                    })
+                    .map(agent -> Long.valueOf(agent.get("id").toString()))
+                    .collect(Collectors.toList());
+
+            // 6️⃣ Récupérer tous les projets
+            List<ProjetDTO> allProjets = projetService.getAllProjets();
+
+            // 7️⃣ Filtrer les projets dont l'agent de soumission correspond
+            List<ProjetDTO> projetsFiltres = allProjets.stream()
+                    .filter(p -> agentsCorrespondants.contains(p.getIdAgentSoumission()))
+                    .collect(Collectors.toList());
+
+            // 8️⃣ Statistiques par statut
+            Map<String, Long> statutStats = projetsFiltres.stream()
+                    .collect(Collectors.groupingBy(
+                            p -> p.getStatut() != null ? p.getStatut().toString() : "AUCUN_STATUT",
+                            Collectors.counting()
+                    ));
+
+            // 9️⃣ Réponse
+            return ResponseEntity.ok(Map.of(
+                    "rattachement", Map.of(
+                            "code", rattachementCode,
+                            "name", rattachementName
+                    ),
+                    "totalAgents", agentsCorrespondants.size(),
+                    "totalProjets", projetsFiltres.size(),
+                    "statistiquesParStatut", statutStats,
+                    "projets", projetsFiltres
+            ));
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(Map.of(
+                    "error", "server_error",
+                    "message", e.getMessage()
+            ));
+        }
+    }
+
+//    Validation des differents dt
+
+    /**
+     * ✅ NOUVEAU: Valider un projet par le DT (Direction Technique)
+     * Change le statut de EN_ATTENTE_DT → EN_ATTENTE_MANAGER
+     */
+    @PatchMapping("/{id}/valider-dt")
+    public ResponseEntity<?> validerParDT(@PathVariable Long id) {
+        try {
+            ProjetDTO updated = projetService.validerParDT(id);
+            return ResponseEntity.ok(Map.of(
+                    "message", "Projet validé par le DT et transféré au manager",
+                    "ancienStatut", "EN_ATTENTE_DT",
+                    "nouveauStatut", "EN_ATTENTE_MANAGER",
+                    "projet", updated
+            ));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("message", e.getMessage()));
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        } catch (Exception e) {
+            return ResponseEntity.status(500)
+                    .body(Map.of("message", "Erreur: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * ✅ NOUVEAU: Rejeter un projet par le DT
+     * Change le statut de EN_ATTENTE_DT → REJETE
+     */
+    @PatchMapping("/{id}/rejeter-dt")
+    public ResponseEntity<?> rejeterParDT(@PathVariable Long id) {
+        try {
+            ProjetDTO updated = projetService.rejeterParDT(id);
+            return ResponseEntity.ok(Map.of(
+                    "message", "Projet rejeté par le DT",
+                    "ancienStatut", "EN_ATTENTE_DT",
+                    "nouveauStatut", "REJETE",
+                    "projet", updated
+            ));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("message", e.getMessage()));
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        } catch (Exception e) {
+            return ResponseEntity.status(500)
+                    .body(Map.of("message", "Erreur: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * ✅ NOUVEAU: Récupérer les projets en attente de validation DT
+     * Récupère tous les projets avec le statut EN_ATTENTE_DT pour le rattachement de l'utilisateur connecté
+     */
+    @GetMapping("/dt/en-attente")
+    public ResponseEntity<?> getProjetsEnAttenteDT() {
+        try {
+            // Récupérer l'agent connecté
+            Map<String, Object> connectedAgent = agentService.getConnectedAgentDetails();
+            if (connectedAgent == null || connectedAgent.containsKey("message")) {
+                return ResponseEntity.status(404).body(Map.of(
+                        "error", "not_found",
+                        "message", "Utilisateur non connecté ou introuvable"
+                ));
+            }
+
+            // Vérifier que l'agent est bien rattaché à une entité DTO
+            Map<String, Object> rattachement = (Map<String, Object>) connectedAgent.get("rattachement");
+            if (rattachement == null) {
+                return ResponseEntity.status(400).body(Map.of(
+                        "error", "no_rattachement",
+                        "message", "Aucun rattachement trouvé"
+                ));
+            }
+
+            Map<String, Object> parent = (Map<String, Object>) rattachement.get("parent");
+            if (parent == null || !"70".equals(parent.get("code"))) {
+                return ResponseEntity.status(403).body(Map.of(
+                        "error", "access_denied",
+                        "message", "Accès réservé aux agents rattachés à une entité DTO"
+                ));
+            }
+
+            // Récupérer tous les agents du même rattachement
+            Long rattachementId = convertToLong(rattachement.get("id"));
+            List<Map<String, Object>> allAgents = agentService.getAllAgents();
+
+            List<Long> agentsInRattachement = allAgents.stream()
+                    .filter(agent -> {
+                        Object rattObj = agent.get("rattachement");
+                        if (rattObj instanceof Map) {
+                            Map<String, Object> rat = (Map<String, Object>) rattObj;
+                            Object ratIdObj = rat.get("id");
+                            if (ratIdObj != null) {
+                                Long ratId = convertToLong(ratIdObj);
+                                return rattachementId.equals(ratId);
+                            }
+                        }
+                        return false;
+                    })
+                    .map(agent -> convertToLong(agent.get("id")))
+                    .collect(Collectors.toList());
+
+            // Récupérer tous les projets EN_ATTENTE_DT
+            List<ProjetDTO> projetsEnAttenteDT = projetService.getProjetsByStatut(StatutProjet.EN_ATTENTE_DT);
+
+            // Filtrer les projets du rattachement
+            List<ProjetDTO> projetsFiltres = projetsEnAttenteDT.stream()
+                    .filter(p -> agentsInRattachement.contains(p.getIdAgentSoumission()))
+                    .collect(Collectors.toList());
+
+            return ResponseEntity.ok(Map.of(
+                    "rattachement", Map.of(
+                            "id", rattachementId,
+                            "name", rattachement.get("name"),
+                            "code", rattachement.get("code")
+                    ),
+                    "totalProjets", projetsFiltres.size(),
+                    "projets", projetsFiltres
+            ));
+
+        } catch (Exception e) {
+            log.error("❌ Erreur lors de la récupération des projets en attente DT", e);
+            return ResponseEntity.status(500).body(Map.of(
+                    "error", "server_error",
+                    "message", "Erreur: " + e.getMessage()
+            ));
+        }
     }
 }
