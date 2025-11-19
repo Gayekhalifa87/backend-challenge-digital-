@@ -17,6 +17,7 @@ import java.util.List;
 @AllArgsConstructor
 public class CreateProjetRequest {
     private String titre;
+    private String teamName;
     private String description;
     private String objectif;
     private String gains;
